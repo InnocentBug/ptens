@@ -11,144 +11,47 @@
 # must be accompanied by a verbatim copy of the license. 
 #
 #
+
 import torch
-
-import ptens_base 
-#from ptens_base import subgraph_layer1 as _subgraph_layer1
-from ptens.utility import device_id as device_id
-
-#import ptens.ptensors0 
-#import ptens.ptensors1 
-#import ptens.ptensors2 
-
+import ptens_base as pb 
 
 class subgraphlayer(torch.Tensor):
 
+    covariant_functions=[torch.Tensor.to,torch.Tensor.add,torch.Tensor.sub,torch.relu]
+
     @classmethod
-    def dummy(self):
-        R=subgraphlayer(1)
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+        if func in cls.covariant_functions:
+            r= super().__torch_function__(func, types, args, kwargs)
+            r.atoms=args[0].atoms
+            r.G=args[0].G
+            r.S=args[0].S
+        else:
+            r= super().__torch_function__(func, types, args, kwargs)
+            if isinstance(r,torch.Tensor):
+                r=torch.Tensor(r)
+        return r
+
+
+    # ---- Operations ----------------------------------------------------------------------------------------
+
+
+    def __add__(self,y):
+        assert self.size()==y.size()
+        assert self.G==y.G
+        assert self.S==y.S
+        assert self.atoms==y.atoms
+        R=torch.Tensor.__add__(self,y)
+        R.atoms=self.atoms
+        R.G=self.G
+        R.S=self.S
         return R
+        #return self.from_matrix(self.G,self.S,torch.Tensor.__add__(self,y))
 
 
-# ------------------------------------------------------------------------------------------------------------
+def matmul(x,y):
+    return x.from_matrix(x.atoms,torch.matmul(x,y))
 
 
-class SubgraphLayer_toDeviceFn(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx,x,_dev):
-        dev=ptens.device_id(_dev)
-        r=x.dummy()
-        r.obj=x.obj.to_device(dev)
-        ctx.x=x.obj
-        ctx.r=r.obj
-        ctx.dev=dev
-        return r
-    @staticmethod
-    def backward(ctx,g):
-        ctx.x.to_device_back(ctx.r,ctx.dev)
-        return subgraphlayer.dummy(), None
-
-
-class SubgraphLayer_concatFn(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx,x,y):
-        r=x.dummy()
-        r.obj=x.obj.concat(y.obj)
-        ctx.x=x.obj
-        ctx.y=y.obj
-        ctx.r=r.obj
-        return r
-    @staticmethod
-    def backward(ctx,g):
-        ctx.x.add_concat_back(ctx.r,0)
-        ctx.y.add_concat_back(ctx.r,ctx.x.get_nc())
-        return subgraphlayer0(1),subgraphlayer0(1)
-
-
-class SubgraphLayer_plusFn(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx,x,y):
-        r=x.dummy()
-        r.obj=x.obj.plus(y.obj)
-        ctx.x=x.obj
-        ctx.y=y.obj
-        ctx.r=r.obj
-        return r
-    @staticmethod
-    def backward(ctx,g):
-        ctx.x.add_to_grad(ctx.r.gradp())
-        ctx.y.add_to_grad(ctx.r.gradp())
-        return subgraphlayer.dummy(),subgraphlayer.dummy()
-
-
-class SubgraphLayer_mprodFn(torch.autograd.Function):
-     @staticmethod
-     def forward(ctx,x,y):
-         r=x.dummy()
-         r.obj=x.obj.mprod(y.obj)
-         ctx.x=x.obj
-         ctx.y=y
-         ctx.r=r.obj
-         return r
-     @staticmethod
-     def backward(ctx,g):
-         ctx.x.add_mprod_back0(ctx.r.gradp(),ctx.y)
-         return subgraphlayer.dummy(), ctx.x.mprod_back1(ctx.r.gradp())
-
-
-class SubgraphLayer_linearFn(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx,x,y,b):
-        r=x.dummy()
-        r.obj=x.obj.linear(y,b)
-        ctx.x=x.obj
-        ctx.y=y
-        ctx.r=r.obj
-        return r
-    @staticmethod
-    def backward(ctx,g):
-        ctx.x.add_linear_back0(ctx.r,ctx.y)
-        return subgraphlayer.dummy(), ctx.x.linear_back1(ctx.r), ctx.x.linear_back2(ctx.r)
-
-
-class SubgraphLayer_inpFn(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx,x,y):
-        ctx.x=x.obj
-        ctx.y=y.obj
-        return torch.tensor(x.obj.inp(y.obj))
-    @staticmethod
-    def backward(ctx,g):
-        ctx.x.add_to_grad(ctx.y,g.item())
-        ctx.y.add_to_grad(ctx.x,g.item())
-        return subgraphlayer.dummy(), subgraphlayer.dummy()
-
-
-class SubgraphLayer_diff2Fn(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx,x,y):
-        ctx.x=x.obj
-        ctx.y=y.obj
-        return torch.tensor(x.obj.diff2(y.obj))
-    @staticmethod
-    def backward(ctx,g):
-        ctx.x.add_to_grad(ctx.x,g.item()*2.0)
-        ctx.x.add_to_grad(ctx.y,-g.item()*2.0)
-        ctx.y.add_to_grad(ctx.y,g.item()*2.0)
-        ctx.y.add_to_grad(ctx.x,-g.item()*2.0)
-        return subgraphlayer.dummy(), subgraphlayer.dummy()
-
-
-class SubgraphLayer_ReLUFn(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx,x,alpha):
-        r=x.dummy()
-        r.obj=x.obj.ReLU(alpha)
-        ctx.x=x.obj
-        ctx.alpha=alpha
-        ctx.r=r.obj
-        return r
-    @staticmethod
-    def backward(ctx,g):
-        ctx.x.add_ReLU_back(ctx.r,ctx.alpha)
-        return subgraphlayer.dummy(), None

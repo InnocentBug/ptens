@@ -19,10 +19,10 @@
 #include <chrono>
 #include <ctime>
 
-#include "PtensSession.hpp"
+//#include "PtensSessionObj.hpp"
 
 //extern ptens::PtensLog* ptens_log;
-extern ptens::PtensSession ptens_session;
+//extern ptens::PtensSessionObj* ptens::ptens_session;
 
 
 namespace ptens{
@@ -31,13 +31,13 @@ namespace ptens{
   public:
 
     string task;
-    int n_ops=0;
+    long long n_ops=0;
     chrono::time_point<chrono::system_clock> t0;
 
     ~LoggedTimer(){
       auto elapsed=chrono::duration<double,std::milli>(chrono::system_clock::now()-t0).count();
-      if(n_ops>0) ptens_session.log(task+" "+to_string(elapsed)+" ms"+" ["+to_string((int)(((float)n_ops)/elapsed/1000.0))+" Mflops]");
-      else ptens_session.log(task+" "+to_string(elapsed)+" ms");
+      //if(n_ops>0) ptens_session->log(task+" "+to_string(elapsed)+" ms"+" ["+to_string((int)(((float)n_ops)/elapsed/1000.0))+" Mflops]");
+      //else ptens_session->log(task+" "+to_string(elapsed)+" ms");
     }
 
 
@@ -104,7 +104,7 @@ namespace ptens{
 
 
 
-    LoggedTimer(string _task, const int _ops):
+    LoggedTimer(string _task, const long long _ops):
       task(_task){
       t0=chrono::system_clock::now();
       n_ops=_ops;
@@ -132,19 +132,42 @@ namespace ptens{
 
     template<typename OBJ0>
     TimedFn(string cl, string fn, const OBJ0& obj0, const int count):
-      LoggedTimer(cl+"::"+fn+"("+obj0.repr()+")"+" [n="+to_string(count)+"]",count){}
+      LoggedTimer(cl+"::"+fn+"("+obj0.repr()+")"+" [n="+to_string(count)+"]",(long long) count){}
 
     template<typename OBJ0, typename OBJ1>
     TimedFn(string cl, string fn, const OBJ0& obj0, const OBJ1& obj1, const int count):
-      LoggedTimer(cl+"::"+fn+"("+obj0.repr()+","+obj1.repr()+")"+" [n="+to_string(count)+"]",count){}
+      LoggedTimer(cl+"::"+fn+"("+obj0.repr()+","+obj1.repr()+")"+" [n="+to_string(count)+"]",(long long) count){}
 
     template<typename OBJ0, typename OBJ1, typename OBJ2>
     TimedFn(string cl, string fn, const OBJ0& obj0, const OBJ1& obj1, const OBJ2& obj2, const int count):
+      LoggedTimer(cl+"::"+fn+"("+obj0.repr()+","+obj1.repr()+","+obj2.repr()+")"+" [n="+to_string(count)+"]",(long long) count){}
+
+
+    template<typename OBJ0>
+    TimedFn(string cl, string fn, const OBJ0& obj0, const long long count):
+      LoggedTimer(cl+"::"+fn+"("+obj0.repr()+")"+" [n="+to_string(count)+"]",count){}
+
+    template<typename OBJ0, typename OBJ1>
+    TimedFn(string cl, string fn, const OBJ0& obj0, const OBJ1& obj1, const long long count):
+      LoggedTimer(cl+"::"+fn+"("+obj0.repr()+","+obj1.repr()+")"+" [n="+to_string(count)+"]",count){}
+
+    template<typename OBJ0, typename OBJ1, typename OBJ2>
+    TimedFn(string cl, string fn, const OBJ0& obj0, const OBJ1& obj1, const OBJ2& obj2, const long long count):
       LoggedTimer(cl+"::"+fn+"("+obj0.repr()+","+obj1.repr()+","+obj2.repr()+")"+" [n="+to_string(count)+"]",count){}
 
 
   };
 
+
+  class TimedBlock: public LoggedTimer{
+  public:
+
+    TimedBlock(string _name, std::function<void()> lambda):
+      LoggedTimer(_name){
+      lambda();
+    }
+
+  };
 
 }
 

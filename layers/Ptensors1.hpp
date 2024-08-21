@@ -15,51 +15,64 @@
 #ifndef _ptens_Ptensors1
 #define _ptens_Ptensors1
 
-#include "Ptens_base.hpp"
-
-//#include "Cgraph.hpp"
-#include "RtensorPackB.hpp"
-#include "AtomsPack.hpp"
-#include "AindexPack.hpp"
-#include "Ptensor1.hpp"
-#include "Ptensors0.hpp"
 #include "diff_class.hpp"
+#include "Rtensor1_view.hpp"
+#include "Rtensor2_view.hpp"
+#include "Rtensor3_view.hpp"
 
-#include "PtensLoggedTimer.hpp"
+#include "Ptensor1.hpp"
+#include "Ptensors.hpp"
+#include "AtomsPackTag.hpp"
+#include "Ptensor1view.hpp"
+#include "GatherPlanFactory.hpp"
 
 
 namespace ptens{
 
-
   #ifdef _WITH_CUDA
-  extern void Ptensors1_reduce0_cu(cnine::RtensorPackB& R,const cnine::RtensorPackB& x, int offs, int n, const cudaStream_t& stream);
-  extern void Ptensors1_reduce0n_cu(cnine::RtensorPackB& R,const cnine::RtensorPackB& x, int offs, int n, const cudaStream_t& stream);
-  extern void Ptensors1_reduce0_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const AindexPack& list, int offs, int n, const cudaStream_t& stream);
-  extern void Ptensors1_reduce0n_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const AindexPack& list, int offs, int n, const cudaStream_t& stream);
-  extern void Ptensors1_reduce1_cu(cnine::RtensorPackB& R,const cnine::RtensorPackB& x, int offs, int n, const cudaStream_t& stream);
-  extern void Ptensors1_reduce1_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const AindexPack& list, int offs, int n, const cudaStream_t& stream);
-  extern void Ptensors1_broadcast0_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const int offs, const cudaStream_t& stream);
-  extern void Ptensors1_broadcast0n_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const int offs, const cudaStream_t& stream);
-  extern void Ptensors1_broadcast0_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const AindexPack& list, const int offs, const cudaStream_t& stream);
-  extern void Ptensors1_broadcast0n_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const AindexPack& list, const int offs, const cudaStream_t& stream);
-  extern void Ptensors1_broadcast1_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const int offs, const cudaStream_t& stream);
-  extern void Ptensors1_broadcast1_cu(cnine::RtensorPackB& R, const cnine::RtensorPackB& x, const AindexPack& list, const int offs, const cudaStream_t& stream);
-  #endif
+  extern void Ptensors1_reduce0_cu(const cnine::Ltensor<float>& r, const cnine::Ltensor<float>& x, const AindexPackB& map, 
+    int offs, int n, const cudaStream_t& stream);
+  extern void Ptensors1_reduce1_cu(const cnine::Ltensor<float>& r, const cnine::Ltensor<float>& x, const AindexPackB& map, 
+    int offs, int n, const cudaStream_t& stream);
+  extern void Ptensors1_broadcast0_cu(const cnine::Ltensor<float>& r, const cnine::Ltensor<float>& x, const AindexPackB& map, 
+    const int offs, const cudaStream_t& stream);
+  extern void Ptensors1_broadcast1_cu(const cnine::Ltensor<float>& r, const cnine::Ltensor<float>& x, const AindexPackB& map, 
+    const int offs, const cudaStream_t& stream);
+  #endif 
 
-  class Ptensors1: public cnine::RtensorPackB, public cnine::diff_class<Ptensors1>{
+
+  template<typename TYPE>
+  class Ptensors1: public Ptensors<TYPE>, public cnine::diff_class<Ptensors1<TYPE> >{
   public:
 
-    typedef cnine::Gdims Gdims;
-    typedef cnine::IntTensor itensor;
-    typedef cnine::IntTensor IntTensor;
-    typedef cnine::RtensorA rtensor;
+    friend class Ptensors0<TYPE>;
+    friend class Ptensors2<TYPE>;
+
+    typedef Ptensors<TYPE> BASE;
+    typedef typename BASE::TENSOR TENSOR;
+    //typedef cnine::Ltensor<TYPE> TENSOR;
     typedef cnine::Rtensor1_view Rtensor1_view;
     typedef cnine::Rtensor2_view Rtensor2_view;
-    typedef cnine::Rtensor3_view Rtensor3_view;
-    typedef cnine::RtensorPackB RtensorPackB;
 
-    AtomsPack atoms;
-    //rtensor norms;
+    using cnine::diff_class<Ptensors1<TYPE> >::grad;
+
+    using BASE::get_dev;
+    using TENSOR::dim;
+    using TENSOR::move_to_device;
+    using TENSOR::add;
+    using TENSOR::dev;
+    using TENSOR::strides;
+    using TENSOR::get_arr;
+    using TENSOR::cols;
+
+    using BASE::nc;
+    using BASE::atoms;
+    using BASE::size;
+    using BASE::atoms_of;
+    using BASE::get_nc;
+
+
+    AtomsPackTag1 tag;
 
 
     ~Ptensors1(){
@@ -74,710 +87,371 @@ namespace ptens{
 
     Ptensors1(){}
 
-    Ptensors1(const int _nc, const int _dev=0):
-      RtensorPackB(2,_nc,_dev) /*, nc(_nc)*/{}
+    Ptensors1(const AtomsPack& _atoms, const TENSOR& M):
+      BASE(_atoms,M),
+      tag(_atoms){}
 
-    Ptensors1(const AtomsPack& _atoms, const int _nc, const int _dev=0):
-      RtensorPackB(2,_nc,_dev), /*nc(_nc),*/ atoms(_atoms){}
+    //Ptensors1(const AtomsPack& _atoms, const cnine::TensorView<TYPE>& M):
+    //BASE(_atoms,M),
+    //tag(_atoms){}
 
-    //Ptensors1(shared_ptr<cnine::Tensor<int> > atoms_ptr, const int _nc, const int _dev=0):
-    //RtensorPackB(2,_nc,_dev), /*nc(_nc),*/ atoms(atoms_ptr){}
+    Ptensors1(const TENSOR& M, const AtomsPack& _atoms):
+      BASE(_atoms,M),
+      tag(_atoms){}
 
-    Ptensors1(const AtomsPack& _atoms, const int _nc, const cnine::fill_zero& dummy, const int _dev=0):
-      Ptensors1(zero(_atoms,_nc,_dev)){}
+    Ptensors1(const TENSOR& M, const AtomsPackTag1& _tag):
+      BASE(_tag.obj->atoms.lock(),M),
+      tag(_tag){}
 
-    Ptensors1(const cnine::Tensor<int>& M, const int _nc, const cnine::fill_zero& dummy, const int _dev=0):
-      RtensorPackB(M.dims[0],{M.dims[1],_nc},dummy,_dev), atoms(M){}
+    Ptensors1(const AtomsPack& _atoms, const int nc, const int _dev=0):
+      BASE(_atoms,cnine::Gdims({_atoms.nrows1(),nc}),0,_dev),
+      tag(_atoms){}
 
-    template<typename FILLTYPE, typename = typename std::enable_if<std::is_base_of<cnine::fill_pattern, FILLTYPE>::value, FILLTYPE>::type>
-    Ptensors1(const int _n, const int _k, const int _nc, const FILLTYPE& dummy, const int _dev=0):
-      RtensorPackB(_n,{_k,_nc},dummy,_dev), atoms(_n,_k){}
-
-
-  public: // ----- Constructors ------------------------------------------------------------------------------
+    Ptensors1(const AtomsPack& _atoms, const int nc, const int fcode, const int _dev):
+      BASE(_atoms,cnine::Gdims({_atoms.nrows1(),nc}),fcode,_dev),
+      tag(_atoms){}
 
 
-    static Ptensors1 raw(const int _n, const int _k, const int _nc, const int _dev=0){
-      return Ptensors1(_n,_k,_nc,cnine::fill_raw(),_dev);}
-
-    static Ptensors1 zero(const int _n, const int _k, const int _nc, const int _dev=0){
-      return Ptensors1(_n,_k,_nc,cnine::fill_zero(),_dev);}
-
-    static Ptensors1 gaussian(const int _n, const int _k, const int _nc, const int _dev=0){
-      return Ptensors1(_n,_k,_nc,cnine::fill_gaussian(),_dev);}
-
-    static Ptensors1 gaussian(const int _n, const int _k, const int _nc, const float sigma, const int _dev){
-      return Ptensors1(_n,_k,_nc,cnine::fill_gaussian(sigma),_dev);}
-
-    static Ptensors1 randn(const int _n, const int _k, const int _nc, const int _dev=0){
-      return Ptensors1(_n,_k,_nc,cnine::fill_gaussian(),_dev);}
-
-    static Ptensors1 randn(const int _n, const int _k, const int _nc, const float sigma, const int _dev){
-      return Ptensors1(_n,_k,_nc,cnine::fill_gaussian(sigma),_dev);}
-
-    static Ptensors1 sequential(const int _n, const int _k, const int _nc, const int _dev=0){
-      Ptensors1 R(_n,_k,_nc,cnine::fill_raw(),0);
-      for(int i=0; i<_n; i++)
-	R.view2_of(i).set(i); 
-      R.to_device(_dev);
-      return R;
+    static Ptensors1 cat(const vector<Ptensors1>& list){
+      vector<AtomsPack> v;
+      for(auto& p:list)
+	v.push_back(p.atoms);
+      if(ptens_global::cache_atomspack_cats) 
+	return Ptensors1(TENSOR::stack(0,list),ptens_global::atomspack_cat_cache(v));
+      return Ptensors1(TENSOR::stack(0,list),AtomsPack::cat(v));
     }
 
 
-    static Ptensors1 raw(const AtomsPack& _atoms, const int _nc, const int _dev=0){
-      Ptensors1 R(_atoms,_nc,_dev);
-      R.reserve(_atoms.tsize1()*_nc);
-      R.dir=IntTensor::raw({_atoms.size(),3});
-      R.tail=0;
-      for(int i=0; i<_atoms.size(); i++){
-	R.dir.set_row(i,{R.tail,_atoms.size_of(i),_nc});
-	R.tail+=_atoms.size_of(i)*_nc;
-      }
-      return R;
+  public: // ---- Named parameter constructors ---------------------------------------------------------------
+
+
+    struct vparams{
+      int nc=1;
+      int fcode=0;
+      int dev=0;
+    };      
+
+    template<typename... Args>
+    Ptensors1(const AtomsPack& _atoms, const Args&... args):
+      BASE(_atoms),
+      tag(_atoms){
+      vparams v;
+      unroller(v,args...);
+      nc=v.nc;
+      BASE::reset(BASE({atoms.nrows1(),v.nc},v.fcode,v.dev));
     }
 
-    static Ptensors1 zero(const AtomsPack& _atoms, const int _nc, const int _dev=0){
-      Ptensors1 R(_atoms,_nc,_dev);
-      R.reserve_zero(_atoms.tsize1()*_nc);
-      R.dir=IntTensor::raw({_atoms.size(),3});
-      R.tail=0;
-      for(int i=0; i<_atoms.size(); i++){
-	R.dir.set_row(i,{R.tail,_atoms.size_of(i),_nc});
-	R.tail+=_atoms.size_of(i)*_nc;
-      }
-      return R;
+    template<typename... Args>
+    void unroller(vparams& v, const cnine::ChannelsArgument& x, const Args&... args){
+      v.nc=x.get(); unroller(v, args...);}
+
+    template<typename... Args>
+    void unroller(vparams& v, const cnine::FillArgument& x, const Args&... args){
+      v.fcode=x.get(); unroller(v, args...);}
+
+    template<typename... Args>
+    void unroller(vparams& v, const cnine::DeviceArgument& x, const Args&... args){
+      v.dev=x.get(); unroller(v, args...);}
+
+    void unroller(vparams& v){}
+
+
+  public: // ---- Old style constructors ---------------------------------------------------------------------
+    
+
+    static Ptensors1 zero(const AtomsPack& _atoms, const int nc, const int _dev=0){
+      return Ptensors1(_atoms,nc,0,_dev);}
+
+    static Ptensors1 raw(const AtomsPack& _atoms, const int nc, const int _dev=0){
+      return Ptensors1(_atoms,nc,1,_dev);}
+
+    static Ptensors1 ones(const AtomsPack& _atoms, const int nc, const int _dev=0){
+      return Ptensors1(_atoms,nc,2,_dev);}
+
+    static Ptensors1 sequential(const AtomsPack& _atoms, const int nc, const int _dev=0){
+      return Ptensors1(_atoms,nc,3,_dev);}
+
+    static Ptensors1 gaussian(const AtomsPack& _atoms, const int nc, const int _dev=0){
+      return Ptensors1(_atoms,nc,4,_dev);}
+
+
+  public: // ----- Spawning ----------------------------------------------------------------------------------
+
+    
+    Ptensors1 copy() const{
+      return Ptensors1(TENSOR::copy(),atoms);
     }
 
-    static Ptensors1 gaussian(const AtomsPack& _atoms, const int _nc, const int _dev=0){
-      Ptensors1 R(_nc,0);
-      for(int i=0; i<_atoms.size(); i++)
-	R.push_back(Ptensor1::gaussian(_atoms(i),_nc));
-      R.to_device(_dev);
-      return R;
+    Ptensors1 copy(const int _dev) const{
+      return Ptensors1(TENSOR::copy(_dev),atoms);
     }
 
-    static Ptensors1 gaussian(const AtomsPack& _atoms, const int _nc, const float sigma, const int _dev){
-      Ptensors1 R(_nc,0);
-      for(int i=0; i<_atoms.size(); i++)
-	R.push_back(Ptensor1::gaussian(_atoms(i),_nc,sigma,0));
-      R.to_device(_dev);
-      return R;
+    Ptensors1 zeros_like() const{
+      return Ptensors1(TENSOR::zeros_like(),atoms);
     }
 
-    static Ptensors1 randn(const AtomsPack& _atoms, const int _nc, const int _dev=0){
-      return Ptensors1::gaussian(_atoms,_nc,_dev);
+    Ptensors1 zeros_like(const int nc) const{
+      return Ptensors1(TENSOR({dim(0),nc},0,get_dev()),atoms);
     }
 
-    static Ptensors1 randn(const AtomsPack& _atoms, const int _nc, const float sigma, const int _dev){
-      return Ptensors1::gaussian(_atoms,_nc,sigma,_dev);
+    Ptensors1 gaussian_like() const{
+      return Ptensors1(BASE::gaussian_like(),atoms);
     }
-
-    static Ptensors1 sequential(const AtomsPack& _atoms, const int _nc, const int _dev=0){
-      Ptensors1 R(_nc,0);
-      for(int i=0; i<_atoms.size(); i++)
-	R.push_back(Ptensor1::sequential(_atoms(i),_nc));
-      R.to_device(_dev);
-      return R;
-    }
-
-
-    static Ptensors1 concat(const Ptensors1& x, const Ptensors1& y){
-      Ptensors1 R=Ptensors1::zero(x.atoms,x.nc+y.nc,x.dev);
-      R.add_to_channels(x,0);
-      R.add_to_channels(y,x.nc);
-      return R;
-    }
-
-
-  public: // ----- Copying -----------------------------------------------------------------------------------
-
-
-    Ptensors1(const Ptensors1& x):
-      RtensorPackB(x),
-      cnine::diff_class<Ptensors1>(x),
-      atoms(x.atoms){
-      PTENS_COPY_WARNING();
-    }
-	
-    Ptensors1(Ptensors1&& x):
-      RtensorPackB(std::move(x)),
-      cnine::diff_class<Ptensors1>(std::move(x)),
-      atoms(std::move(x.atoms)){
-      PTENS_MOVE_WARNING();
-    }
-
-    Ptensors1& operator=(const Ptensors1& x)=delete;
-
-
-  public: // ---- Spawning -----------------------------------------------------------------------------------
-
 
     static Ptensors1 zeros_like(const Ptensors1& x){
-      return Ptensors1(RtensorPackB::zeros_like(x),x.atoms);
+      return Ptensors1(x.TENSOR::zeros_like(),x.atoms);
     }
 
-    static Ptensors1 zeros_like(const Ptensors1& x, const int _nc){
-      return Ptensors1(RtensorPackB::zeros_like(x,_nc),x.atoms);
+    static Ptensors1 gaussian_like(const Ptensors1& x){
+      return Ptensors1(x.TENSOR::gaussian_like(),x.atoms);
     }
 
     static Ptensors1* new_zeros_like(const Ptensors1& x){
-      return new Ptensors1(RtensorPackB::zeros_like(x),x.atoms);
+      return new Ptensors1(x.BASE::zeros_like(),x.atoms);
     }
-
-   static Ptensors1 gaussian_like(const Ptensors1& x){
-     return Ptensors1(RtensorPackB::gaussian_like(x),x.atoms);
-    }
-
-    static Ptensors1 randn_like(const Ptensors1& x){
-      return Ptensors1(RtensorPackB::gaussian_like(x),x.atoms);
-    }
-
-    static Ptensors1 sequential_like(const Ptensors1& x){
-      return Ptensors1(RtensorPackB::sequential_like(x),x.atoms);
-    }
-
-    static Ptensors1 like(const Ptensors1& x, const cnine::RtensorA& M){
-      return Ptensors1(M,x.atoms);
-    }
-      
+    
 
   public: // ----- Conversions -------------------------------------------------------------------------------
 
 
-    //Ptensors1(cnine::RtensorPack&& x, const AtomsPack& _atoms)://, const int _nc):
-      //RtensorPackB(std::move(x)), atoms(_atoms)/*, nc(_nc)*/{}
-
-    Ptensors1(const RtensorPackB& x, const AtomsPack& _atoms):
-      RtensorPackB(x), atoms(_atoms){}
-
-    Ptensors1(RtensorPackB&& x, const AtomsPack& _atoms):
-      RtensorPackB(std::move(x)), atoms(_atoms){}
-
-    //rtensor view_as_matrix() const{
-    //return rtensor::view_of_blob({tail/nc,nc},get_arr(),dev);
-    //}
-
-    //Ptensors1(const rtensor& A):
-    //CNINE_UNIMPL();
-    //RtensorPackB(A), atoms(A.dim(0)){
-    //}
-
-    Ptensors1(const rtensor& A, const AtomsPack& _atoms):
-      RtensorPackB(A,_atoms.dims1(A.dim(1))), atoms(_atoms){
-    }
-
-    #ifdef _WITH_ATEN
-    Ptensors1(const at::Tensor& T, const AtomsPack& _atoms):
-      Ptensors1(rtensor::regular(T),_atoms){}
-    #endif 
 
 
   public: // ---- Transport ----------------------------------------------------------------------------------
 
 
     Ptensors1(const Ptensors1& x, const int _dev):
-      RtensorPackB(x,_dev),
-      atoms(x.atoms){}
+      BASE(x.atoms,x.copy(_dev)), 
+      tag(x.tag){}
 
-    Ptensors1& to_device(const int _dev){
-      RtensorPackB::to_device(_dev);
-      return *this;
+
+  public: // ----- Virtual functions --------------------------------------------------------------------------
+
+
+    Ptensors1& get_grad(){
+      return cnine::diff_class<Ptensors1<TYPE> >::get_grad();
+    }
+
+    const Ptensors1& get_grad() const{
+      return cnine::diff_class<Ptensors1<TYPE> >::get_grad();
     }
 
 
   public: // ----- Access ------------------------------------------------------------------------------------
 
 
-    int getn() const{
-      return size();
+    static int getk(){
+      return 1;
     }
 
-    //int get_nc() const{
-    //return nc;
-    //}
-
-    AtomsPack& get_atomsref(){
-      return atoms;
+    int size_of(const int i) const{
+      return atoms.size_of(i);
     }
 
-    AtomsPack view_of_atoms(){
-      return atoms.view();
-    }
-
-    /*
-    int getk() const{
-      PTENS_ASSRT(atoms.k>=0);
-      return atoms.k;
-    }
-    */
-
-    int k_of(const int i) const{
-      return dim_of(i,0);
-    }
-
-    Atoms atoms_of(const int i) const{
-      return Atoms(atoms(i));
-    }
-
-    rtensor tensor_of(const int i) const{
-      return RtensorPackB::operator()(i);
+    int offset(const int i) const{
+      return atoms.row_offset1(i);
     }
 
     Rtensor2_view view_of(const int i) const{
-      return RtensorPackB::view2_of(i);
+      return Rtensor2_view(const_cast<TYPE*>(get_arr())+offset(i)*strides[0],size_of(i),get_nc(),strides[0],strides[1],dev);
     }
 
-    Rtensor2_view view_of(const int i, const int offs, const int n) const{
-      return RtensorPackB::view2_of(i).block(0,offs,-1,n);
+    Rtensor2_view view_of(const int i, const int offs, const int m) const{
+      return Rtensor2_view(const_cast<TYPE*>(get_arr())+offset(i)*strides[0]+offs*strides[1],
+	size_of(i),m,strides[0],strides[1],dev);
     }
 
-    Ptensor1_xview view_of(const int i, const vector<int>& ix) const{
-      vector<int> v=headers(i);
-      PTENS_ASSRT(v.size()==3);
-      if(dev==1) return Ptensor1_xview(arrg+v[0],v[2],v[2],1,ix,1);
-      return Ptensor1_xview(arr+v[0],v[2],v[2],1,ix,0);
-    }
-
-    Ptensor1_xview view_of(const int i, const vector<int>& ix, const int offs, const int n) const{
-      vector<int> v=headers(i);
-      PTENS_ASSRT(v.size()==3);
-      if(dev==1) return Ptensor1_xview(arrg+v[0]+offs,n,v[2],1,ix,1);
-      return Ptensor1_xview(arr+v[0]+offs,n,v[2],1,ix,0);
-    }
-
-    Ptensor1 operator()(const int i) const{
-      return Ptensor1(tensor_of(i),atoms_of(i));
-    }
-
-    // only works if each ref domain is of size K
-    cnine::Rtensor3_view view3(const int K) const{
-      int n=getn();
+    Ptensor1view<TYPE> view_of(const int i, const vector<int>& ix) const{
       int nc=get_nc();
-      PTENS_ASSRT(tail==n*K*nc);
-      return cnine::Rtensor3_view(get_arr(),n,K,nc,K*nc,nc,1);
+      return Ptensor1view<TYPE>(const_cast<TYPE*>(get_arr())+offset(i)*nc,nc,nc,1,ix,get_dev());
     }
 
-    int push_back(const Ptensor1& x){
-      if(size()==0) nc=x.get_nc();
-      else assert(nc==x.get_nc());
-      RtensorPackB::push_back(x);
-      atoms.push_back(x.atoms);
-      return size()-1;
+    Ptensor1view<TYPE> view_of(const int i, const vector<int>& ix, const int offs, const int n) const{
+      int nc=get_nc();
+      return Ptensor1view<TYPE>(const_cast<TYPE*>(get_arr())+offset(i)*nc+offs,n,nc,1,ix,get_dev());
     }
 
-    template<typename OBJ1, typename OBJ2, typename FN>
-    void for_each_view(const OBJ1& x, const OBJ2& y, FN lambda){
-      int N=size();
-      PTENS_ASSRT(x.size()==N);
-      PTENS_ASSRT(y.size()==N);
+    Ptensor1<TYPE> operator()(const int i) const{
+      return Ptensor1(TENSOR(TENSOR::rows(offset(i),size_of(i))),atoms_of(i));
+    }
+
+    TENSOR view3(int offs=0, int nc=0) const{
+      PTENS_ASSRT(atoms.constk()>0);
+      if(nc==0) nc=dim(1);
+      return cols(offs,nc).split(0,atoms.constk());
+    }
+
+    //const cnine::Rtensor3_view view3(const int K) const{
+    //int nc=get_nc();
+    //return cnine::Rtensor3_view(const_cast<float*>(get_arr()),dim(0)/K,K,nc,K*nc,nc,1,get_dev());
+    //}
+
+//     cnine::Rtensor3_view view3(const int K){
+//       int nc=get_nc();
+//       return cnine::Rtensor3_view(get_arr(),dim(0)/K,K,nc,K*nc,nc,1,get_dev());
+//     }
+
+//     const cnine::Rtensor3_view view3(const int K, const int offs, const int nc) const{
+//       int _nc=get_nc();
+//       return cnine::Rtensor3_view(const_cast<float*>(get_arr())+offs,dim(0)/K,K,nc,K*_nc,_nc,1,get_dev());
+//     }
+
+//     cnine::Rtensor3_view view3(const int K, const int offs, const int nc){
+//       int _nc=get_nc();
+//       return cnine::Rtensor3_view(get_arr()+offs,dim(0)/K,K,nc,K*_nc,_nc,1,get_dev());
+//     }
+
+
+    Ptensor1view<TYPE> view_of(const AindexPackB& apack, const int i) const{
+      int nc=get_nc();
+      return Ptensor1view<TYPE>(const_cast<float*>(get_arr())+apack.soffset(i)*nc,nc,nc,1,apack.ix(i),get_dev());
+    }
+
+    Ptensor1view<TYPE> view_of(const AindexPackB& apack, const int i, const int offs, const int n) const{
+      int nc=get_nc();
+      return Ptensor1view<TYPE>(const_cast<float*>(get_arr())+apack.soffset(i)*nc+offs,n,nc,1,apack.ix(i),get_dev());
+    }
+
+    void zip0(const AindexPackB& map, const TENSOR& M, 
+      const std::function<void(const Rtensor1_view&,const Ptensor1view<TYPE>&, int)>& lambda, const int offset=0, int n=0) const{
+      int N=map.size();
+      int nc=get_nc();
+      if(n==0) n=nc-offset; 
       for(int i=0; i<N; i++)
-	lambda(view_of(i),x.view_of(i),y.view_of(i));
+	lambda(M.row(map.toffset(i)).view1(),
+	  Ptensor1view<TYPE>(const_cast<float*>(get_arr())+map.soffset(i)*nc+offset,
+	    n,nc,1,map.ix(i),get_dev()),map.nix(i));
     }
 
-    Ptensors1 permute(const cnine::permutation& pi){
-      return Ptensors1(*this,atoms.permute(pi));
-    }
-
-
-  public: // ---- Concatenation ------------------------------------------------------------------------------
-
-
-    static Ptensors1 cat(const vector<reference_wrapper<Ptensors1> >& list){
-      vector<reference_wrapper<AtomsPack> > v;
-      for(auto& p:list)
-	v.push_back(p.get().atoms);
-      return Ptensors1(cnine::RtensorPackB::cat
-	(cnine::mapcar<reference_wrapper<Ptensors1>,reference_wrapper<RtensorPackB> >
-	  (list,[](const reference_wrapper<Ptensors1>& x){
-	    return reference_wrapper<RtensorPackB>(x.get());})),AtomsPack::cat(v));
-    }
-
-    static Ptensors1 sum(const vector<reference_wrapper<Ptensors1> >& list){
-      if(list.size()==0) return Ptensors1();
-      Ptensors1 R(list[0].get());
-      for(int i=1; i<list.size(); i++)
-	R.add(list[i].get());
-      return R;
-    }
-
-
-  public: // ---- Cumulative operations ----------------------------------------------------------------------
-
-
-    void add_to_channels(const Ptensors1& x, const int offs){
-      PTENS_CPUONLY();
-      int N=size();
-      PTENS_ASSRT(x.size()==N);
+    void zip1(const AindexPackB& map, const TENSOR& M, 
+      const std::function<void(const Rtensor2_view&, const Ptensor1view<TYPE>&, int)>& lambda, const int offset=0, int n=0) const{
+      int N=map.size();
+      int nc=get_nc();
+      if(n==0) n=nc-offset; 
       for(int i=0; i<N; i++)
-	view_of(i,offs,x.nc)+=x.view_of(i);
+	lambda(M.rows(map.toffset(i),map.nix(i)).view2(),
+	  Ptensor1view<TYPE>(const_cast<float*>(get_arr())+map.soffset(i)*nc+offset,
+	    n,nc,1,map.ix(i),get_dev()),map.nix(i));
     }
 
-    void add_channels(const Ptensors1& x, const int offs){
-      PTENS_CPUONLY();
-      int N=size();
-      PTENS_ASSRT(x.size()==N);
-      for(int i=0; i<N; i++)
-	view_of(i)+=x.view_of(i,offs,nc);
-    }
 
-    /*
-    void add_mprod(const Ptensors1& x, const rtensor& y){
-      PTENS_CPUONLY();
-      PTENS_ASSRT(x.size()==size());
-      if(dev==0){
-	for(int i=0; i<size(); i++)
-	  view_of(i).add_matmul_AA(x.view_of(i),y.view2());
-      }else{
-	view_as_matrix().add_mprod(x.view_as_matrix(),y);
-      }
-    }
-
-    void add_mprod_back0(const Ptensors1& g, const rtensor& y){
-      PTENS_CPUONLY();
-      PTENS_ASSRT(g.size()==size());
-      if(dev==0){
-	for(int i=0; i<size(); i++)
-	  view_of(i).add_matmul_AT(g.view_of(i),y.view2());
-      }else{
-	view_as_matrix().add_Mprod_AT(g.view_as_matrix(),y);
-      }
-    }
-
-    void add_mprod_back1_to(rtensor& r, const Ptensors1& x) const{
-      PTENS_CPUONLY();
-      PTENS_ASSRT(x.size()==size());
-      if(dev==0){
-	for(int i=0; i<size(); i++)
-	  r.view2().add_matmul_TA(x.view_of(i),view_of(i));
-      }else{
-	r.add_Mprod_TA(x.view_as_matrix(),view_as_matrix());
-      }
-    }
-    */
-
-    Ptensors1 scale_channels(const rtensor& y) const{
-      return Ptensors1(RtensorPackB::scale_channels(y.view1()),atoms);
-    }
-
- 
-  public: // ---- Reductions ---------------------------------------------------------------------------------
+  public: // ---- Linmaps ----------------------------------------------------------------------------
 
 
-    RtensorPackB reduce0() const{
-      TimedFn T("Ptensors1","reduce0",*this);
-      RtensorPackB R(size(),Gdims(nc),cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<size(); i++)
-	  view_of(i).sum0_into(R.view1_of(i));
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce0_cu(R,*this,0,nc,stream)));
+    template<typename SOURCE>
+    static Ptensors1<float> linmaps(const SOURCE& x){
+      Ptensors1<float> R(x.get_atoms(),x.get_nc()*vector<int>({1,2,5})[x.getk()],x.get_dev());
+      R.add_linmaps(x);
       return R;
     }
 
-    RtensorPackB reduce0_n() const{
-      TimedFn T("Ptensors1","reduce0_n",*this);
-      RtensorPackB R(size(),Gdims(nc),cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<size(); i++)
-	  view_of(i).avg0_into(R.view1_of(i));
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce0n_cu(R,*this,0,nc,stream)));
+    void add_linmaps(const Ptensors0<TYPE>& x){
+      broadcast0(x);
+    }
+
+    void add_linmaps(const Ptensors1<TYPE>& x){
+      int nc=x.get_nc();
+      broadcast0(x.reduce0());
+      cols(nc,nc)+=x;
+    }
+
+    void add_linmaps(const Ptensors2<TYPE>& x){
+      int nc=x.get_nc();
+      broadcast0(x.reduce0());
+      cols(2*nc,3*nc)+=x.reduce1();
+    }
+
+    void add_linmaps_back(const Ptensors0<TYPE>& r){
+      broadcast0(r);
+    }
+
+    void add_linmaps_back(const Ptensors1<TYPE>& r){
+      int nc=get_nc();
+      broadcast0(r.reduce0(0,nc));
+      add(r.cols(nc,nc));
+    }
+
+    void add_linmaps_back(const Ptensors2<TYPE>& r){
+      int nc=get_nc();
+      broadcast0(r.reduce0_shrink(0,nc));
+      add(r.reduce1_shrink(2*nc,nc));
+    }
+
+
+  public: // ---- Message passing ----------------------------------------------------------------------------
+
+    
+    template<typename SOURCE>
+    static Ptensors1<TYPE> gather(const AtomsPack& atoms, const SOURCE& x){
+      int nc=x.get_nc()*vector<int>({1,2,5})[x.getk()];
+      Ptensors1<TYPE> R(atoms,nc,x.get_dev());
+      R.add_gather(x,LayerMap::overlaps_map(atoms,x.atoms));
       return R;
     }
 
-    RtensorPackB reduce0(const int offs, const int n) const{
-      TimedFn T("Ptensors1","reduce0",*this);
-      RtensorPackB R(size(),Gdims(n),cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<size(); i++)
-	  view_of(i,offs,n).sum0_into(R.view1_of(i));
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce0_cu(R,*this,offs,n,stream)));
+    template<typename SOURCE>
+    static Ptensors1<TYPE> gather(const AtomsPack& a, const SOURCE& x, const LayerMap& map){
+      int nc=x.get_nc()*vector<int>({1,2,5})[x.getk()];
+      Ptensors1<TYPE> R(a,nc,x.get_dev());
+      R.add_gather(x,map);
       return R;
     }
 
-    RtensorPackB reduce1() const{
-      TimedFn T("Ptensors1","reduce1",*this);
-      return *this;
-    }
+    template<typename SOURCE>
+      void add_gather(const SOURCE& x, const LayerMap& map){
+      int nc=x.get_nc();
 
-    RtensorPackB reduce1(const int offs, const int n) const{
-      TimedFn T("Ptensors1","reduce1",*this);
-      cnine::array_pool<int> dims;
-      for(int i=0; i<size(); i++)
-	dims.push_back(vector<int>({k_of(i),n}));
-      RtensorPackB R(dims,cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<size(); i++){
-	  R.view2_of(i)+=view_of(i,offs,n);
-	}
+      if constexpr(std::is_same<SOURCE,Ptensors0<TYPE> >::value){
+	auto pmap=GatherPlanFactory::gather_map0(map,atoms,x.atoms,1,x.getk());
+	broadcast0(x.reduce0(pmap.in()),pmap.out(),0);
       }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce1_cu(R,*this,offs,n,stream)));
-      return R;
-    }
 
-
-  public: // ---- Indexed Reductions --------------------------------------------------------------------------------------
-
-
-    RtensorPackB reduce0(const AindexPack& list) const{
-      TimedFn T("Ptensors1","reduce0",*this,list,list.count1*nc);
-      int N=list.size();
-      RtensorPackB R(N,Gdims(nc),cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<N; i++){
-	  if(list.nix(i)==0) continue;
-	  view_of(list.tens(i),list.ix(i)).sum0_into(R.view1_of(i));
-	}
+      if constexpr(std::is_same<SOURCE,Ptensors1<TYPE> >::value){
+	auto pmap0=GatherPlanFactory::gather_map0(map,atoms,x.atoms,1,x.getk());
+	auto pmap1=GatherPlanFactory::gather_map1(map,atoms,x.atoms,1,x.getk());
+	broadcast0(x.reduce0(pmap0.in()),pmap0.out(),0);
+	broadcast1(x.reduce1(pmap1.in()),pmap1.out(),nc);
       }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce0_cu(R,*this,list,0,nc,stream)));
-      return R;
-    }
 
-    void reduce0_back(const RtensorPackB& x, const AindexPack& list){
-      TimedFn T("Ptensors1","reduce0_back",*this,x,list,list.count1*x.nc);
-      if(dev==0){
-	int N=list.size();
-	for(int i=0; i<N; i++)
-	  view_of(list.tens(i),list.ix(i))+=repeat0(x.view1_of(i),list.nix(i));
+      if constexpr(std::is_same<SOURCE,Ptensors2<TYPE> >::value){
+	auto pmap0=GatherPlanFactory::gather_map0(map,atoms,x.atoms,1,x.getk());
+	auto pmap1=GatherPlanFactory::gather_map1(map,atoms,x.atoms,1,x.getk());
+	broadcast0(x.reduce0(pmap0.in()),pmap0.out(),0);
+	broadcast1(x.reduce1(pmap1.in()),pmap1.out(),2*nc);
       }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast0_cu(*this,x,list,0,stream)));
+
     }
 
+    template<typename OUTPUT>
+    void add_gather_back(const OUTPUT& x, const LayerMap& map){
+      int nc=get_nc();
 
-    RtensorPackB reduce1(const AindexPack& list) const{
-      TimedFn T("Ptensors1","reduce1",*this,list,list.count1*nc);
-      int N=list.size();
-      cnine::array_pool<int> dims;
-      for(int i=0; i<N; i++)
-	dims.push_back({list.nix(i),nc});
-      RtensorPackB R(dims,cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<N; i++){
-	  if(list.nix(i)==0) continue;
-	  R.view2_of(i)+=view_of(list.tens(i),list.ix(i));
-	}
+      if constexpr(std::is_same<OUTPUT,Ptensors0<TYPE> >::value){
+	auto pmap=GatherPlanFactory::gather_map0(map,x.atoms,atoms,x.getk(),1);
+	broadcast0(x.reduce0(pmap.out()),pmap.in(),0);
       }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce1_cu(R,*this,list,0,nc,stream)));
-      return R;
-    }
 
-    void reduce1_back(const RtensorPackB& x, const AindexPack& list){
-      TimedFn T("Ptensors1","reduce1_back",*this,x,list,list.count1*x.nc);
-      if(dev==0){
-	int N=list.size();
-	for(int i=0; i<N; i++){
-	  if(x.dim_of(i,0)==0) continue;
-	  view_of(list.tens(i),list.ix(i))+=x.view2_of(i);
-	}
+      if constexpr(std::is_same<OUTPUT,Ptensors1<TYPE> >::value){
+	auto pmap0=GatherPlanFactory::gather_map0(map,x.atoms,atoms,x.getk(),1);
+	auto pmap1=GatherPlanFactory::gather_map1(map,x.atoms,atoms,x.getk(),1);
+	broadcast0(x.reduce0(pmap0.out(),0,nc),pmap0.in(),0);
+	broadcast1(x.reduce1(pmap1.out(),nc,nc),pmap1.in(),0);
       }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast1_cu(*this,x,list,0,stream)));
-    }
 
-
-
-
-    RtensorPackB reduce0_n(const AindexPack& list) const{
-      TimedFn T("Ptensors1","reduce0_n",*this,list,list.count1*nc);
-      int N=list.size();
-      RtensorPackB R(N,Gdims(nc),cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<N; i++){
-	  if(list.nix(i)==0) continue;
-	  view_of(list.tens(i),list.ix(i)).avg0_into(R.view1_of(i));
-	}
+      if constexpr(std::is_same<OUTPUT,Ptensors2<TYPE> >::value){
+	auto pmap0=GatherPlanFactory::gather_map0(map,x.atoms,atoms,x.getk(),1);
+	auto pmap1=GatherPlanFactory::gather_map1(map,x.atoms,atoms,x.getk(),1);
+	broadcast0(x.reduce0_shrink(pmap0.out(),0,nc),pmap0.in(),0);
+	broadcast1(x.reduce1_shrink(pmap1.out(),2*nc,nc),pmap1.in(),2*nc);
       }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce0n_cu(R,*this,list,0,nc,stream)));
-      return R;
+
     }
+    
 
-    // deprecated 
-    RtensorPackB reduce0(const AindexPack& list, const int offs, const int n) const{
-      TimedFn T("Ptensors1","reduce0",*this,list,list.count1*n);
-      int N=list.size();
-      RtensorPackB R(N,Gdims(n),cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<N; i++){
-	  if(list.nix(i)==0) continue;
-	  view_of(list.tens(i),list.ix(i),offs,n).sum0_into(R.view1_of(i));
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce0_cu(R,*this,list,offs,n,stream)));
-      return R;
-    }
-
-    // deprecated 
-    RtensorPackB reduce1(const AindexPack& list, const int offs, const int n) const{
-      TimedFn T("Ptensors1","reduce1",*this,list,list.count1*n);
-      int N=list.size();
-      cnine::array_pool<int> dims;
-      for(int i=0; i<N; i++)
-	dims.push_back({list.nix(i),n});
-      RtensorPackB R(dims,cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<N; i++){
-	  if(list.nix(i)==0) continue;
-	  R.view2_of(i)+=view_of(list.tens(i),list.ix(i),offs,n);
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce1_cu(R,*this,list,offs,n,stream)));
-      return R;
-    }
+#include "Ptensors1_reductions.hpp"
+#include "Ptensors1_broadcasting.hpp"
 
 
-  public: // ---- Broadcasting -------------------------------------------------------------------------------
-
-
-    void broadcast0(const RtensorPackB& x){
-      TimedFn T("Ptensors1","brcast0",*this,x);
-      if(dev==0){
-	for(int i=0; i<size(); i++){
-	  view_of(i)+=repeat0(x.view1_of(i),k_of(i));
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast0_cu(*this,x,0,stream)));
-    }
-
-    void broadcast0_n(const RtensorPackB& x){
-      TimedFn T("Ptensors1","brcast0",*this,x);
-      if(dev==0){
-	for(int i=0; i<size(); i++){
-	  view_of(i).add(repeat0(x.view1_of(i),k_of(i)),1.0/((float)k_of(i)));
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast0n_cu(*this,x,0,stream)));
-    }
-
-    void broadcast0(const RtensorPackB& x, const int offs){
-      TimedFn T("Ptensors1","brcast0",*this,x);
-      const int n=x.nc;
-      if(dev==0){
-	for(int i=0; i<size(); i++){
-	  view_of(i,offs,n)+=repeat0(x.view1_of(i),k_of(i));
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast0_cu(*this,x,offs,stream)));
-    }
-
-    void broadcast1(const RtensorPackB& x){
-      TimedFn T("Ptensors1","brcast1",*this,x);
-      if(dev==0){
-	for(int i=0; i<size(); i++){
-	  view_of(i)+=x.view2_of(i);
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast1_cu(*this,x,0,stream)));
-    }
-
-    void broadcast1(const RtensorPackB& x, const int offs){
-      TimedFn T("Ptensors1","brcast1",*this,x);
-      if(dev==0){
-	const int n=x.nc;
-	for(int i=0; i<size(); i++){
-	  view_of(i,offs,n)+=x.view2_of(i);
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast1_cu(*this,x,offs,stream)));
-    }
-
-
-  public: // ---- Indexed broadcasting ------------------------------------------------------------------------------
-
-
-    void broadcast0(const RtensorPackB& x, const AindexPack& list, const int offs){
-      TimedFn T("Ptensors1","brcast0",*this,x,list,list.count1*x.nc);
-      if(dev==0){
-	int N=list.size();
-	const int n=x.nc;
-	for(int i=0; i<N; i++){
-	  view_of(list.tens(i),list.ix(i),offs,n)+=repeat0(x.view1_of(i),list.nix(i));
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast0_cu(*this,x,list,offs,stream)));
-    }
-
-    RtensorPackB broadcast0_back(const AindexPack& list, const int offs, const int n) const{
-      TimedFn T("Ptensors1","brcast0_back",*this,list,list.count1*n);
-      int N=list.size();
-      RtensorPackB R(N,Gdims(n),cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<N; i++){
-	  if(list.nix(i)==0) continue;
-	  view_of(list.tens(i),list.ix(i),offs,n).sum0_into(R.view1_of(i));
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce0_cu(R,*this,list,offs,n,stream)));
-      return R;
-    }
-
-    void broadcast1(const RtensorPackB& x, const AindexPack& list, const int offs){
-      TimedFn T("Ptensors1","brcast1",*this,x,list,list.count1*x.nc);
-      if(dev==0){
-	int N=list.size();
-	const int n=x.nc;
-	for(int i=0; i<N; i++){
-	  if(x.dim_of(i,0)==0) continue;
-	  view_of(list.tens(i),list.ix(i),offs,n)+=x.view2_of(i);
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast1_cu(*this,x,list,offs,stream)));
-    }
-
-    RtensorPackB broadcast1_back(const AindexPack& list, const int offs, const int n) const{
-      TimedFn T("Ptensors1","brcast1_back",*this,list,list.count1*n);
-      int N=list.size();
-      cnine::array_pool<int> dims;
-      for(int i=0; i<N; i++)
-	dims.push_back({list.nix(i),n});
-      RtensorPackB R(dims,cnine::fill_zero(),dev);
-      if(dev==0){
-	for(int i=0; i<N; i++){
-	  if(list.nix(i)==0) continue;
-	  R.view2_of(i)+=view_of(list.tens(i),list.ix(i),offs,n);
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_reduce1_cu(R,*this,list,offs,n,stream)));
-      return R;
-    }
-
-
-
-    void broadcast0_n(const RtensorPackB& x, const AindexPack& list){
-      TimedFn T("Ptensors1","brcast0_n",*this,x,list,list.count1*x.nc);
-      if(dev==0){
-	int N=list.size();
-	for(int i=0; i<N; i++)
-	  view_of(list.tens(i),list.ix(i)).add(repeat0(x.view1_of(i),list.nix(i)),1.0/((float)list.nix(i))); // check this
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast0n_cu(*this,x,list,0,stream)));
-    }
-
-    // deprecated 
-    void broadcast0(const RtensorPackB& x, const AindexPack& list){
-      TimedFn T("Ptensors1","brcast0",*this,x,list,list.count1*x.nc);
-      if(dev==0){
-	int N=list.size();
-	for(int i=0; i<N; i++)
-	  view_of(list.tens(i),list.ix(i))+=repeat0(x.view1_of(i),list.nix(i));
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast0_cu(*this,x,list,0,stream)));
-    }
-
-    // deprecated 
-    void broadcast1(const RtensorPackB& x, const AindexPack& list){
-      TimedFn T("Ptensors1","brcast1",*this,x,list,list.count1*x.nc);
-      if(dev==0){
-	int N=list.size();
-	for(int i=0; i<N; i++){
-	  if(x.dim_of(i,0)==0) continue;
-	  view_of(list.tens(i),list.ix(i))+=x.view2_of(i);
-	}
-      }
-      GPUCODE(CUDA_STREAM(Ptensors1_broadcast1_cu(*this,x,list,0,stream)));
-    }
-
-
-  public: // ---- I/O ----------------------------------------------------------------------------------------
+   public: // ---- I/O ----------------------------------------------------------------------------------------
 
 
     string classname() const{
@@ -785,21 +459,17 @@ namespace ptens{
     }
 
     string repr() const{
-      if(dev==0) return "<Ptensors1[N="+to_string(size())+"]>";
-      else return "<Ptensors1[N="+to_string(size())+"][G]>";
+      return "<Ptensors1[N="+to_string(size())+"]>";
     }
 
     string str(const string indent="") const{
-      if(dev>0){
+      if(get_dev()>0){
 	Ptensors1 y(*this,0);
 	return y.str();
       }
       ostringstream oss;
-      //oss<<atoms<<endl;
       for(int i=0; i<size(); i++){
-	oss<<indent<<(*this)(i)<<endl;
-	//oss<<indent<<"Ptensor "<<i<<" "<<Atoms(atoms(i))<<":"<<endl;
-	//oss<<RtensorPackB::operator()(i).str()<<endl;
+	oss<<(*this)(i).str(indent);
       }
       return oss.str();
     }
@@ -807,9 +477,29 @@ namespace ptens{
     friend ostream& operator<<(ostream& stream, const Ptensors1& x){
       stream<<x.str(); return stream;}
 
+
+
   };
+
+
+  template<typename SOURCE>
+  inline Ptensors1<float> linmaps1(const SOURCE& x){
+    Ptensors1<float> R(x.get_atoms(),x.get_nc()*vector<int>({1,2,5})[x.getk()],x.get_dev());
+    R.add_linmaps(x);
+    return R;
+  }
+
+  template<typename SOURCE>
+  Ptensors1<float> gather1(const SOURCE& x, const AtomsPack& a){
+    int nc=x.get_nc()*vector<int>({1,2,5})[x.getk()];
+    Ptensors1<float> R(a,nc,x.get_dev());
+    R.add_gather(x);
+    return R;
+  }
+
 
 }
 
 
 #endif 
+

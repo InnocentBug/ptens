@@ -13,36 +13,53 @@
  */
 
 #include "Cnine_base.cpp"
-#include "PtensSession.hpp"
+#include "Ptens_base.cpp"
 #include "Ggraph.hpp"
-
 #include "Subgraph.hpp"
 
 using namespace ptens;
 using namespace cnine;
 
-PtensSession ptens::ptens_session;
+PtensSession ptens_session;
 
 
 int main(int argc, char** argv){
 
-  Ggraph M=Ggraph::random(10,0.2);
+  Tensor<float> A({{0.0, 1, 1, 1, 0, 0},
+        {1.0, 0, 0, 1, 1, 1},
+	  {1.0, 0, 0, 0, 1, 1},
+	    {1.0, 1, 0, 0, 0, 1},
+	      {0.0, 1, 1, 0, 0, 1},
+		{0.0, 1, 1, 1, 1, 0}});
+  cout<<A<<endl;
+
+  Ggraph M=Ggraph(A);
+  auto Z=Subgraph::cycle(5);
+  cout<<Z<<endl;
+
+  auto V=M.subgraphs(Z);
+  cout<<V<<endl;
+
+  //Ggraph M=Ggraph::random(5,0.5);
   cout<<M<<endl;
 
-  Subgraph A=Subgraph::star(5);
-  cout<<A.dense()<<endl;
+  Subgraph S=Subgraph::triangle();
+  cout<<S<<endl;
 
-  /*
-  CSRmatrix<float> Md=M.csrmatrix();
-  cout<<Md<<endl;
+  auto U=M.subgraphs(S);
+  cout<<U<<endl;
 
-  GatherMap Mg=M.broadcast_map();
-  cout<<Mg<<endl;
-  //for(int i=0; i<5; i++)
-  //cout<<M.nhoods(i)<<endl;
 
-  auto E=M.edges();
-  cout<<E<<endl;
-  */
+  Tensor<int> B({{0,1,2},{1,2,0}});
+  Tensor<int> D(Gdims(3));
+  D.set(0,2);
+  D.set(1,3);
+  D.set(2,2);
+  Subgraph P=Subgraph::edge_index_degrees(B,D);
+  cout<<P<<endl;
+
+  cout<<"-- Cache: --"<<endl;
+  //cout<<Subgraph::cached()<<endl;
+  cout<<ptens_global::subgraph_cache<<endl;
 
 }

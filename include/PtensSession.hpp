@@ -14,16 +14,7 @@
 #ifndef _PtensSession
 #define _PtensSession
 
-#include <fstream>
-#include <chrono>
-#include <ctime>
-#include <unordered_set>
-
 #include "CnineSession.hpp"
-#include "object_bank.hpp"
-
-#include "Ptens_base.hpp"
-#include "SubgraphObj.hpp"
 
 
 namespace ptens{
@@ -32,68 +23,116 @@ namespace ptens{
   class PtensSession{
   public:
 
-    cnine::cnine_session* cnine_session=nullptr;
-
-    ofstream logfile;
-    //cnine::object_bank<Subgraph,SubgraphObj> subgraph_bank([]
-    //(const Subgraph& x){return new SubgraphObj(x);});
-    std::unordered_set<SubgraphObj> subgraphs;
+    cnine::cnine_session  cnineSession;
 
 
-    PtensSession(const int _nthreads=1){
+    PtensSession(const int _nthreads=1):
+      cnineSession(_nthreads){
 
-      cnine_session=new cnine::cnine_session(_nthreads);
+      //cout<<banner()<<endl;
+      cout<<"Starting ptens..."<<endl;
 
-      #ifdef _WITH_CUDA
-      cout<<"Initializing ptens with GPU support."<<endl;
-      #else
-      cout<<"Initializing ptens without GPU support."<<endl;
-      #endif
-
-
-      logfile.open("ptens.log");
-      auto time = std::chrono::system_clock::now();
-      std::time_t timet = std::chrono::system_clock::to_time_t(time);
-      #ifdef _WITH_CUDA
-      logfile<<"Ptens session started with CUDA at "<<std::ctime(&timet)<<endl;
-      #else
-      logfile<<"Ptens session started without CUDA at "<<std::ctime(&timet)<<endl;
-      #endif 
-      
     }
-
 
     ~PtensSession(){
-
-      cout<<"Shutting down ptens."<<endl;
-      std::time_t timet = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-      logfile<<endl<<"Ptens session shut down at "<<std::ctime(&timet)<<endl<<endl<<endl;
-      logfile.close();
-      
-      delete cnine_session;
+      //cout<<banner()<<endl;
     }
 
 
-  public: // Logging 
+  public: // ---- Access -----------------------------------------------------------------------------------------
 
-    void log(const string msg){
-      std::time_t timet = std::time(nullptr);
-      char os[30];
-      strftime(os,30,"%H:%M:%S ",std::localtime(&timet));
-      logfile<<os<<msg<<endl;
+
+    //    void row_level_operations(const bool x){
+    //ptens_global::row_level_operations=x;
+    //}
+
+    void cache_atomspack_cats(const bool x){
+      ptens_global::cache_atomspack_cats=x;
+    }
+
+    //void cache_overlap_maps(const bool x){
+    //ptens_global::cache_overlap_maps=x;
+    //}
+
+    //void cache_rmaps(const bool x){
+    //ptens_global::cache_rmaps=x;
+    //}
+
+
+  public: // ---- I/O --------------------------------------------------------------------------------------------
+
+
+    string on_off(const bool b) const{
+      if(b) return " ON";
+      return "OFF";
+    }
+
+    string size_or_off(const bool b, const int x) const{
+      if(!b) return "\b\bOFF";
+      auto s=to_string(x);
+      return string('\b',s.length())+s;
+    }
+
+    string print_size(const int x) const{
+      auto s=to_string(x);
+      return string('\b',s.length())+s;
+    }
+
+    string banner() const{
+      bool with_cuda=0;
+      #ifdef _WITH_CUDA
+      with_cuda=1;
+      #endif
+
+      ostringstream oss;
+      oss<<"-------------------------------------"<<endl;
+      oss<<"Ptens 0.0 "<<endl;
+      cout<<endl;
+      oss<<"CUDA support:                     "<<on_off(with_cuda)<<endl;
+      oss<<"Row level gather operations:      "<<on_off(ptens_global::row_level_operations)<<endl;
+      oss<<"-------------------------------------"<<endl;
+      return oss.str();
     }
     
-    template<typename OBJ>
-    void log(const string msg, const OBJ& obj){
-      std::time_t timet = std::time(nullptr);
-      char os[30];
-      strftime(os,30,"%H:%M:%S ",std::localtime(&timet));
-      logfile<<os<<msg<<obj.repr()<<endl;
+    string status_str() const{
+      bool with_cuda=0;
+      #ifdef _WITH_CUDA
+      with_cuda=1;
+      #endif
+
+      ostringstream oss;
+      oss<<"---------------------------------------"<<endl;
+      oss<<" Ptens 0.0 "<<endl;
+      cout<<endl;
+      oss<<" CUDA support:                     "<<on_off(with_cuda)<<endl;
+      //oss<<" Row level gather operations:      "<<on_off(ptens_global::row_level_operations)<<endl;
+      oss<<endl;
+      oss<<" AtomsPack cat cache:                "<<
+	size_or_off(ptens_global::cache_atomspack_cats, ptens_global::atomspack_cat_cache.size())<<endl;
+      //oss<<" Overlap maps cache:                 "<<
+      //size_or_off(ptens_global::cache_overlap_maps, ptens_global::overlaps_cache.size())<<endl;
+      //oss<<" Row level map cache:                "<<
+      //size_or_off(ptens_global::cache_rmaps, ptens_global::rmap_cache.size())<<endl;
+      oss<<" Graph cache:                        "<<
+	print_size(ptens_global::graph_cache.size())<<endl;
+      oss<<" Graph elist cache:                  "<<
+	print_size(ptens_global::graph_cache.edge_list_map.size())<<endl;
+      oss<<" Subgraph cache:                     "<<
+	print_size(ptens_global::subgraph_cache.size())<<endl;
+      oss<<"---------------------------------------"<<endl;
+      return oss.str();
     }
     
+     string str() const{
+      return banner();
+    }
+
+    friend ostream& operator<<(ostream& stream, const PtensSession& x){
+      stream<<x.str(); return stream;
+    }
+
   };
 
 }
-
 
 #endif 

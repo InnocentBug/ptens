@@ -15,199 +15,130 @@
 #ifndef _ptens_SubgraphLayer0
 #define _ptens_SubgraphLayer0
 
-//#include "Hgraph.hpp"
-//#include "Subgraph.hpp"
-//#include "TransferMap.hpp"
-#include "SubgraphLayer.hpp"
-#include "PtensFindPlantedSubgraphs.hpp"
-#include "EMPlayers2.hpp"
+#include "Ggraph.hpp"
+#include "Subgraph.hpp"
+#include "Ptensors0.hpp"
+#include "Ptensors1.hpp"
+#include "Ptensors2.hpp"
+//#include "SubgraphLayer.hpp"
 
 
 namespace ptens{
 
-  template<typename TLAYER> 
-  class SubgraphLayer1;
-  template<typename TLAYER> 
-  class SubgraphLayer2;
 
-
-  template<typename TLAYER> 
-  class SubgraphLayer0: public SubgraphLayer<TLAYER>{
+  template<typename TYPE> 
+  class SubgraphLayer0: public Ptensors0<TYPE>{
   public:
 
-    typedef cnine::RtensorA rtensor;
-    typedef SubgraphLayer<TLAYER> BASE;
+    typedef Ptensors0<TYPE> BASE;
+    typedef typename BASE::TENSOR TENSOR;
+    //typedef cnine::Ltensor<TYPE> TENSOR;
 
     using BASE::BASE;
     using BASE::atoms;
-    using BASE::G;
-    using BASE::S;
-    using TLAYER::dev;
-    using TLAYER::getn;
-    using TLAYER::get_nc;
-    using TLAYER::get_grad;
-    using TLAYER::tensor;
-    using TLAYER::inp;
-    using TLAYER::diff2;
-    using TLAYER::inv_channel_norms;
-    using TLAYER::add_scale_channels;
+    using BASE::add_gather;
+
+    const Ggraph G;
+    const Subgraph S;
 
 
-  public: 
-
-    // 
-    //template<typename IPACK>
-    //SubgraphLayer0(const Hgraph& _G, const Subgraph& _S, const IPACK& ipack, const int nc, const int _dev=0):
-    //G(_G), S(_S), TLAYER(ipack,nc,cnine::fill_zero(),_dev){}
-
-    //template<typename FILLTYPE, typename = typename std::enable_if<std::is_base_of<cnine::fill_pattern, FILLTYPE>::value, FILLTYPE>::type>
-    //SubgraphLayer0(const Hgraph& _G, const int nc, const FILLTYPE& dummy, const int _dev=0):
-    //G(_G), S(Subgraph::trivial()), TLAYER(_G.getn(),nc,dummy,_dev){}
-
-    //SubgraphLayer0(const Hgraph& _G, const rtensor& x):
-    //G(_G), S(Subgraph::trivial()), TLAYER(x){}
+  public: // ----- Constructors ------------------------------------------------------------------------------
 
 
-  public: // ---- Named Constructors ------------------------------------------------------------------------------------------
+    SubgraphLayer0(const Ggraph& _G, const TENSOR& x):
+      BASE(x), G(_G), S(Subgraph::trivial()){}
+
+    SubgraphLayer0(const Ggraph& _G, const Subgraph& _S, const BASE& x):
+      BASE(x), G(_G), S(_S){}
+
+    SubgraphLayer0(const Ggraph& _G, const Subgraph& _S, const AtomsPack& atoms, const TENSOR& x):
+      BASE(x,atoms), G(_G), S(_S){}
+
+    SubgraphLayer0(const Ggraph& _G, const int nc, const int fcode=0, const int _dev=0):
+      G(_G), S(Subgraph::trivial()), BASE(_G.getn(),nc,fcode,_dev){}
+
+    SubgraphLayer0(const Ggraph& _G, const Subgraph& _S, const AtomsPack& _atoms, const int nc, const int fcode, const int _dev=0):
+      G(_G), S(_S), BASE(_atoms,nc,fcode,_dev){}
+
+    //static SubgraphLayer0 cat(const vector<SubgraphLayer0>& list){
+    //vector<AtomsPack0> v;
+    //for(auto& p:list)
+    //v.push_back(p.atoms);
+    //return SubgraphLayer0(AtomsPack0::cat(v),cnine::Ltensor<TYPE>::stack(0,list));
+    //}
 
 
-    static SubgraphLayer0<TLAYER> zeros_like(const SubgraphLayer0<TLAYER>& x){
-      return SubgraphLayer0(TLAYER::zeros_like(x),x.G,x.S);
+  public: // ----- Spawning ----------------------------------------------------------------------------------
+
+
+    SubgraphLayer0 copy() const{
+      return SubgraphLayer0(G,S,BASE::copy());
     }
 
-    static SubgraphLayer0<TLAYER> randn_like(const SubgraphLayer0<TLAYER>& x){
-      return SubgraphLayer0(TLAYER::randn_like(x),x.G,x.S);
+    SubgraphLayer0 copy(const int _dev) const{
+      return SubgraphLayer0(G,S,BASE::copy(_dev));
     }
 
-    SubgraphLayer0<TLAYER> zeros() const{
-      return SubgraphLayer0(TLAYER::zeros_like(*this),G,S);
+    SubgraphLayer0 zeros_like() const{
+      return SubgraphLayer0(G,S,BASE::zeros_like());
     }
 
-    SubgraphLayer0<TLAYER> zeros(const int _nc) const{
-      return SubgraphLayer0(TLAYER::zeros_like(*this,_nc),G,S);
+    SubgraphLayer0 gaussian_like() const{
+      return SubgraphLayer0(G,S,BASE::gaussian_like());
     }
 
-  public: // ---- Conversions --------------------------------------------------------------------------------------------
+    static SubgraphLayer0* new_zeros_like(const SubgraphLayer0& x){
+      return new SubgraphLayer0(x.G,x.S,x.TENSOR::zeros_like());
+    }
+    
+    SubgraphLayer0(const SubgraphLayer0& x, const int _dev):
+      SubgraphLayer0(x.G,x.S,BASE(x,_dev)){}
 
 
-    SubgraphLayer0(const Ggraph& _G, const rtensor& x):
-      SubgraphLayer<TLAYER>(TLAYER(x),_G,Subgraph::trivial()){}
+  public: // ---- Message passing between subgraph layers -----------------------------------------------------
 
 
-  public: // ---- Transport ----------------------------------------------------------------------------------
-
-
-    SubgraphLayer0(const SubgraphLayer0<TLAYER>& x, const int _dev):
-      SubgraphLayer<TLAYER>(TLAYER(x,_dev),x.G,x.S){}
-
-
-  public: // ---- Message passing ----------------------------------------------------------------------------------------
-
-
-    template<typename TLAYER2>
-    SubgraphLayer0(const SubgraphLayer0<TLAYER2>& x, const Subgraph& _S):
-      SubgraphLayer0(x.G,_S,AtomsPack(x.getn()),x.get_nc(),x.dev){
-      emp00(*this,x,TransferMap(x.atoms,atoms));
+    // TODO 
+    template<typename SOURCE>
+    static SubgraphLayer0 linmaps(const SOURCE& x){
+      SubgraphLayer0 R(x.get_atoms(),x.get_nc()*vector<int>({1,1,2})[x.getk()],x.get_dev());
+      R.add_linmaps(x);
+      return R;
     }
 
-    template<typename TLAYER2>
-    void gather_back(SubgraphLayer0<TLAYER2>& x){
-      emp00(x.get_grad(),get_grad(),TransferMap(atoms,x.atoms)); 
+    template<typename SOURCE>
+    SubgraphLayer0(const SOURCE& x, const Subgraph& _S):
+      SubgraphLayer0(x.G,_S,x.G.subgraphs(_S),x.get_nc()*vector<int>({1,1,2})[x.getk()],0,x.dev){
+      add_gather(x,LayerMap::overlaps_map(atoms,x.atoms));
     }
 
-    template<typename TLAYER2>
-    SubgraphLayer0(const SubgraphLayer1<TLAYER2>& x, const Subgraph& _S):
-      SubgraphLayer0(x.G,_S,AtomsPack(x.getn()),x.get_nc(),x.dev){
-      emp10(*this,x,TransferMap(x.atoms,atoms));
+    template<typename SOURCE>
+    SubgraphLayer0(const SOURCE& x, const Ggraph& _G, const Subgraph& _S):
+      SubgraphLayer0(_G,_S,_G.subgraphs(_S),x.get_nc()*vector<int>({1,1,2})[x.getk()],0,x.dev){
+      add_gather(x,LayerMap::overlaps_map(atoms,x.atoms));
     }
-
-    template<typename TLAYER2>
-    void gather_back(SubgraphLayer1<TLAYER2>& x){
-      emp01(x.get_grad(),get_grad(),TransferMap(atoms,x.atoms));
-    }
-
-    template<typename TLAYER2>
-    SubgraphLayer0(const SubgraphLayer2<TLAYER2>& x, const Subgraph& _S):
-      SubgraphLayer0(x.G,_S,AtomsPack(x.getn()),2*x.get_nc(),x.dev){
-      emp20(*this,x,TransferMap(x.atoms,atoms));
-    }
-
-    template<typename TLAYER2>
-    void gather_back(SubgraphLayer2<TLAYER2>& x){
-      emp20_back(x.get_grad(),get_grad(),TransferMap(atoms,x.atoms));
-    }
-
-
-    SubgraphLayer0(const Ptensors0& x, const Ggraph& _G, const Subgraph& _S):
-      SubgraphLayer0(_G,_S,CachedPlantedSubgraphsMx(*_G.obj,*_S.obj),x.get_nc(),x.dev){
-      emp00(*this,x,TransferMap(x.atoms,atoms));
-    }
-
-    void gather_back(Ptensors0& x){
-      emp00(x.get_grad(),get_grad(),TransferMap(atoms,x.atoms)); 
-    }
-
-    SubgraphLayer0(const Ptensors1& x, const Ggraph& _G, const Subgraph& _S):
-      SubgraphLayer0(_G,_S,CachedPlantedSubgraphsMx(*_G.obj,*_S.obj),x.get_nc(),x.dev){
-      emp10(*this,x,TransferMap(x.atoms,atoms));
-    }
-
-    void gather_back(Ptensors1& x){
-      emp01(x.get_grad(),get_grad(),TransferMap(atoms,x.atoms));
-    }
-
-    SubgraphLayer0(const Ptensors2& x, const Ggraph& _G, const Subgraph& _S):
-      SubgraphLayer0(_G,_S,CachedPlantedSubgraphsMx(*_G.obj,*_S.obj),2*x.get_nc(),x.dev){
-      emp20(*this,x,TransferMap(x.atoms,atoms));
-    }
-
-    void gather_back(Ptensors2& x){
-      emp20_back(x.get_grad(),get_grad(),TransferMap(atoms,x.atoms));
-    }
-
-
-  public: // ---- Operations --------------------------------------------------------------------------------
-
-
-    SubgraphLayer0 permute(const cnine::permutation& pi){
-      return SubgraphLayer0(G.permute(pi),S,Ptensors0::permute(pi));
-    }
-
-
-  public: // ---- I/O ----------------------------------------------------------------------------------------
-
-
-    string classname() const{
-      return "SubgraphLayer0";
-    }
-
-    string repr() const{
-      if(dev==0) return "<SubgraphLayer0[N="+to_string(getn())+"]>";
-      else return "<SubgraphLayer0[N="+to_string(getn())+"][G]>";
-    }
-
 
   };
+
+
+  template<typename SOURCE>
+  inline SubgraphLayer0<float> sglinmaps0(const SOURCE& x){
+    SubgraphLayer0<float> R(x.get_atoms(),x.get_nc()*vector<int>({1,1,2})[x.getk()],x.get_dev());
+    R.add_linmaps(x);
+    return R;
+  }
+
+  template<typename SOURCE>
+  inline SubgraphLayer0<float> gather0(const SOURCE& x, const Subgraph& _S){
+    int nc=x.get_nc()*vector<int>({1,1,2})[x.getk()];
+    SubgraphLayer0<float> R(x.G,_S,x.G.subgraphs(_S),nc,0,x.dev);
+    R.add_gather(x,LayerMap::overlaps_map(R.atoms,x.atoms));
+    return R;
+  }
+
 
 }
 
 #endif 
 
-
-    // 
-    //template<typename LAYER>
-    //TransferMap overlaps(const LAYER& x){
-    //  return TransferMap(atoms,x.atoms);
-    //}
-
-
-    //SubgraphLayer0<TLAYER> transfer0(const Subgraph& _S){
-    //SubgraphLayer0<TLAYER> R(G,_S,AtomsPack(getn()),get_nc(),dev);
-    //emp00(R,*this,TransferMap(atoms,R.atoms));
-    //}
-
-    //SubgraphLayer1<TLAYER> transfer1(const Subgraph& _S){
-    //SubgraphLayer1<TLAYER> R(G,_S,FindPlantedSubgraphs(G,_S),get_nc(),dev);
-    //emp11(R,*this,TransferMap(atoms,R.atoms));
-    //}
 

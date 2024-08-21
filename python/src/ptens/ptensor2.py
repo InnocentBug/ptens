@@ -1,205 +1,143 @@
 #
-# This file is part of ptens, a C++/CUDA library for permutation 
-# equivariant message passing. 
-#  
+# This file is part of ptens, a C++/CUDA library for permutation
+# equivariant message passing.
+#
 # Copyright (c) 2023, Imre Risi Kondor
 #
-# This source code file is subject to the terms of the noncommercial 
-# license distributed with cnine in the file LICENSE.TXT. Commercial 
-# use is prohibited. All redistributed versions of this file (in 
-# original or modified form) must retain this copyright notice and 
-# must be accompanied by a verbatim copy of the license. 
+# This source code file is subject to the terms of the noncommercial
+# license distributed with cnine in the file LICENSE.TXT. Commercial
+# use is prohibited. All redistributed versions of this file (in
+# original or modified form) must retain this copyright notice and
+# must be accompanied by a verbatim copy of the license.
 #
 #
+
 import torch
+import ptens_base as pb
+import ptens as p
+from ptens.ptensor import ptensor
 
-import ptens_base 
-from ptens_base import ptensor0 as _ptensor0
-from ptens_base import ptensor1 as _ptensor1
-from ptens_base import ptensor2 as _ptensor2
 
-import ptens.ptensor0 
-import ptens.ptensor1
-
-class ptensor2(torch.Tensor):
+class ptensor2(ptensor):
 
     @classmethod
-    def zeros(self, _atoms, _nc, device='cpu'):
-        R=ptensor2(torch.zeros(len(_atoms),len(_atoms),_nc, device))
-        R.atoms=_atoms
-        return R
-    
-    @classmethod
-    def randn(self, _atoms, _nc, device='cpu'):
-        R=ptensor2(torch.randn(len(_atoms),len(_atoms),_nc, device))
-        R.atoms=_atoms
-        return R
+    def zeros(cls,atoms,_nc,device='cpu'):
+        return cls.make(atoms,torch.zeros([len(atoms),len(atoms),_nc],device=device))
 
     @classmethod
-    def sequential(self, _atoms, _nc, device='cpu'):
-        R=ptensor2(_ptensor2.sequential(_atoms,_nc,ptens.device_id(device)).torch())
-        R.atoms=_atoms
-        return R
+    def randn(cls,atoms,_nc,device='cpu'):
+        return cls.make(atoms,torch.randn([len(atoms),len(atoms),_nc],device=device))
+
+    @classmethod
+    def sequential(cls,atoms,nc,device='cpu'):
+        assert isinstance(nc,int)
+        return cls.make(atoms,torch.tensor([i for i in range (0,len(atoms)*len(atoms)*nc)],
+                                            dtype=torch.float,device=device).reshape(len(atoms),len(atoms),nc))
+
+    @classmethod
+    def from_tensor(cls, atoms, M):
+        return cls.make(atoms,M)
+
+    def backend(self):
+        return pb.ptensor2.view(self.atoms,self)
 
 
-    # ---- Access --------------------------------------------------------------------------------------------
+    # ----- Access -------------------------------------------------------------------------------------------
 
+
+    def getd(self):
+        return self.size(0)
 
     def get_nc(self):
         return self.size(2)
 
 
-    # ---- Operations ----------------------------------------------------------------------------------------
-
-    
-    def linmaps0(self):
-        return Ptensor2_Linmaps0Fn.apply(self);
-
-    def linmaps1(self):
-        return Ptensor2_Linmaps1Fn.apply(self);
-
-    def linmaps2(self):
-        return Ptensor2_Linmaps2Fn.apply(self);
+    # ---- Linmaps -------------------------------------------------------------------------------------------
 
 
-    def transfer0(self,_atoms):
-        return Ptensor2_Transfer0Fn.apply(self,_atoms)
+    @classmethod
+    def linmaps(self,x):
+        nc=x.get_nc()
+        if isinstance(x,p.ptensor0):
+            return self.broadcast0(x)
+        if isinstance(x,p.ptensor1):
+            r=self.zeros(x.atoms,5*nc)
+            r[:,:,0:2*nc]=self.broadcast0(x.reduce0())
+            r[:,:,2*nc:5*nc]=self.broadcast1(x)
+            return r
+        if isinstance(x,p.ptensor2):
+            r=self.zeros(x.atoms,15*nc)
+            r[:,:,0:4*nc]=self.broadcast0(x.reduce0())
+            r[:,:,4*nc:13*nc]=self.broadcast1(x.reduce1())
+            r[:,:,13*nc:15*nc]=self.broadcast2(x)
+            return r
 
-    def transfer1(self,_atoms):
-        return Ptensor2_Transfer1Fn.apply(self,_atoms)
 
-    def transfer2(self,_atoms):
-        return Ptensor2_Transfer2Fn.apply(self,_atoms)
+    # ---- Reductions ---------------------------------------------------------------------------------------
 
 
-    # ---- I/O -----------------------------------------------------------------------------------------------
+    def reduce0(self):
+        d=self.size(0)
+        nc=self.size(2)
+        R=torch.zeros([2*nc])
+        R[0:nc]+=self.sum(0).sum(0)
+        R[nc:2*nc]+=torch.einsum("iic->c",self)
+        return p.ptensor0.make(self.atoms,R)
+
+    def reduce1(self):
+        d=self.size(0)
+        nc=self.size(2)
+        R=torch.zeros([d,3*nc])
+        R[:,0:nc]+=self.sum(0)
+        R[:,nc:2*nc]+=self.sum(1)
+        R[:,2*nc:3*nc]+=torch.einsum("iic->ic",self)
+        return p.ptensor1.make(self.atoms,R)
 
 
-    def __str__(self):
-        u=_ptensor2.view(self,self.atoms)
-        return u.__str__()
+    # ---- Broadcasting ---------------------------------------------------------------------------------------
+
+
+    @classmethod
+    def broadcast0(self,x):
+        assert x.dim()==1
+        k=len(x.atoms)
+        nc=x.size(0)
+        R=torch.zeros([k,k,2*nc])
+        S=x.unsqueeze(0).expand(k,nc)
+        R[:,:,0:nc]=S.unsqueeze(0).expand(k,k,nc)
+        U=torch.t(R[:,:,nc:2*nc].diagonal(0,0,1))
+        U+=S
+        return self.make(x.atoms,R)
+
+    @classmethod
+    def broadcast1(self,x):
+        assert x.dim()==2
+        k=x.size(0)
+        nc=x.size(1)
+        R=torch.zeros([k,k,3*nc])
+        R[:,:,0:nc]=x.unsqueeze(0).expand(k,k,nc)
+        R[:,:,nc:2*nc]=x.unsqueeze(1).expand(k,k,nc)
+        U=torch.t(R[:,:,2*nc:3*nc].diagonal())
+        U+=x
+        return self.make(x.atoms,R)
+
+    @classmethod
+    def broadcast2(self,x):
+        assert x.dim()==3
+        k=x.size(0)
+        nc=x.size(2)
+        R=torch.zeros([k,k,2*nc])
+        R[:,:,0:nc]=x
+        R[:,:,nc:2*nc]=torch.einsum("ijc->jic",x)
+        return self.make(x.atoms,R)
+
+
+
+    # ---- I/O ----------------------------------------------------------------------------------------------
+
 
     def __repr__(self):
-        u=_ptensor2.view(self,self.atoms)
-        return u.__str__()
+        return "<ptensor1(atoms="+str(self.atoms)+",nc="+str(self.size(1))+")>"
 
-
-
-# ------------------------------------------------------------------------------------------------------------
-
-
-class Ptensor2_Linmaps0Fn(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx,x):
-        R=ptens.ptensor0.zeros(x.atoms,2*x.get_nc())
-        u=_ptensor2.view(x,x.atoms)
-        r=_ptensor0.view(R,R.atoms)
-        ptens_base.add_linmaps2to0(r,u)
-        return R
-        
-    @staticmethod
-    def backward(ctx,g):
-        R=ptensor2.zeros(g.atoms,g.get_nc()/2)
-        u=_ptensor0.view(g,g.atoms)
-        r=_ptensor2.view(R,R.atoms)
-        ptens_base.add_linmaps2to0_back(r,u)
-        return R
-
-
-class Ptensor2_Linmaps1Fn(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx,x):
-        R=ptens.ptensor1.zeros(x.atoms,5*x.get_nc())
-        u=_ptensor2.view(x,x.atoms)
-        r=_ptensor1.view(R,R.atoms)
-        ptens_base.add_linmaps2to1(r,u)
-        return R
-        
-    @staticmethod
-    def backward(ctx,g):
-        R=ptensor2.zeros(g.atoms,g.get_nc()/5)
-        u=_ptensor1.view(g,g.atoms)
-        r=_ptensor2.view(R,R.atoms)
-        ptens_base.add_linmaps2to1_back(r,u)
-        return R
-
-
-class Ptensor2_Linmaps2Fn(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx,x):
-        R=ptensor2.zeros(x.atoms,15*x.get_nc())
-        u=_ptensor2.view(x,x.atoms)
-        r=_ptensor2.view(R,R.atoms)
-        ptens_base.add_linmaps2to2(r,u)
-        return R
-        
-    @staticmethod
-    def backward(ctx,g):
-        R=ptensor2.zeros(g.atoms,int(g.get_nc()/15)) # !!
-        u=_ptensor2.view(g,g.atoms)
-        r=_ptensor2.view(R,R.atoms)
-        ptens_base.add_linmaps2to2_back(r,u)
-        return R
-
-
-class Ptensor2_Transfer0Fn(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx,x,_atoms):
-        R=ptens.ptensor0.zeros(_atoms,x.get_nc()*2)
-        u=_ptensor2.view(x,x.atoms)
-        r=_ptensor0.view(R,R.atoms) 
-        ptens_base.add_msg(r,u)
-        return R
-        
-    @staticmethod
-    def backward(ctx,g):
-        R=ptensor2.zeros(g.atoms,g.get_nc()/2)
-        u=_ptensor0.view(g,g.atoms)
-        r=_ptensor2.view(R,R.atoms) 
-        ptens_base.add_msg_back(r,u) 
-        return R,None
-
-
-class Ptensor2_Transfer1Fn(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx,x,_atoms):
-        R=ptens.ptensor1.zeros(_atoms,5*x.get_nc())
-        u=_ptensor2.view(x,x.atoms)
-        r=_ptensor1.view(R,R.atoms) 
-        ptens_base.add_msg(r,u)
-        return R
-        
-    @staticmethod
-    def backward(ctx,g):
-        R=ptensor2.zeros(g.atoms,g.get_nc()/5)
-        u=_ptensor1.view(g,g.atoms)
-        r=_ptensor2.view(R,R.atoms) 
-        ptens_base.add_msg_back(r,u) 
-        return R,None
-
-
-class Ptensor2_Transfer2Fn(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx,x,_atoms):
-        R=ptensor2.zeros(_atoms,x.get_nc()*15)
-        u=_ptensor2.view(x,x.atoms)
-        r=_ptensor2.view(R,R.atoms) 
-        ptens_base.add_msg(r,u)
-        return R
-        
-    @staticmethod
-    def backward(ctx,g):
-        R=ptensor2.zeros(g.atoms,g.get_nc()/15)
-        u=_ptensor2.view(g,g.atoms)
-        r=_ptensor2.view(R,R.atoms) 
-        ptens_base.add_msg_back(r,u) 
-        return R,None
-
-
-
+    def __str__(self):
+        return self.backend().str()

@@ -15,11 +15,15 @@
 #define _Ptens_base
 
 #include "Cnine_base.hpp"
+#include <string>
+#include "TensorView.hpp"
 
 #define _PTENS_GEN_ASSERTS
 
+//#define PTENS_K_SAME(x) if(x.k!=k) throw std::invalid_argument("Ptens error in "+string(__PRETTY_FUNCTION__)+": reference domain size mismatch between "+to_string(getk())+" and "+to_string(x.k)+".");
+
 #ifdef _PTENS_GEN_ASSERTS
-#define PTENS_K_SAME(x) if(x.k!=k) throw std::invalid_argument("Ptens error in "+string(__PRETTY_FUNCTION__)+": reference domain size mismatch between "+to_string(k)+" and "+to_string(x.k)+".");
+#define PTENS_K_SAME(x) 
 #define PTENS_CHANNELS(cond) if(!(cond)) throw std::invalid_argument("Ptens error in "+string(__PRETTY_FUNCTION__)+": channel mismatch.");
 #else
 #define PTENS_K_SAME(x)
@@ -28,6 +32,10 @@
 
 #define PTENS_ASSRT(condition) \
   if(!(condition)) throw std::runtime_error("Ptens error in "+string(__PRETTY_FUNCTION__)+": failed assertion "+#condition+".");
+
+#define PTENS_UNIMPL() printf("Ptens error: function \"%s\" not implemented.\n",__PRETTY_FUNCTION__);
+
+#define PTENS_DEPRECATED() printf("Ptens warning: function \"%s\" deprecated.\n",__PRETTY_FUNCTION__);
 
 
 // ---- Copy, assign and convert warnings --------------------------------------------------------------------
@@ -57,6 +65,32 @@
 
 #define PTENS_CPUONLY() if(dev!=0) {throw std::runtime_error("Ptens error: no CUDA code for "+string(__PRETTY_FUNCTION__)+".\n");}
 
+
+// ---- Template decalarations -------------------------------------------------------------------------------
+
+namespace ptens{
+
+  //template<typename DUMMY> class PtensorsJig0;
+  //template<typename DUMMY> class PtensorsJig1;
+  //template<typename DUMMY> class PtensorsJig2;
+  template<typename TYPE>
+  using PtensTensor=cnine::TensorView<TYPE>;
+
+  template<typename TYPE> class Ptensor0;
+  template<typename TYPE> class Ptensor1;
+  template<typename TYPE> class Ptensor2;
+
+  template<typename TYPE> class Ptensors0;
+  template<typename TYPE> class Ptensors1;
+  template<typename TYPE> class Ptensors2;
+
+  template<typename TYPE> class BatchedPtensors0;
+  template<typename TYPE> class BatchedPtensors1;
+  template<typename TYPE> class BatchedPtensors2;
+
+  namespace ptens_global{};
+
+}
 
 #endif 
 

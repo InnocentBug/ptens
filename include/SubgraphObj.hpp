@@ -2,7 +2,7 @@
  * This file is part of ptens, a C++/CUDA library for permutation 
  * equivariant message passing. 
  *  
- * Copyright (c) 2023, Imre Risi Kondor
+ * Copyright (c) 2023, Imre Kondor Risi
  *
  * This source code file is subject to the terms of the noncommercial 
  * license distributed with cnine in the file LICENSE.TXT. Commercial 
@@ -16,34 +16,42 @@
 #define _ptens_SubgraphObj
 
 #include "Ptens_base.hpp"
-#include "SparseRmatrix.hpp"
-#include "Hgraph.hpp"
 #include "Tensor.hpp"
 #include "SymmEigendecomposition.hpp"
+#include "sparse_graph.hpp"
+#include "Tensor.hpp"
 
 
 namespace ptens{
 
 
-  class SubgraphObj: public Hgraph /*public cnine::SparseRmatrix*/{
+  class SubgraphObj: public cnine::sparse_graph<int,float,float>{
   public:
 
-    typedef Hgraph BASE;
-    typedef cnine::SparseRmatrix BaseMatrix;
+    typedef cnine::sparse_graph<int,float,float> BASE;
     typedef cnine::Tensor<float> rtensor;
 
-    //using BaseMatrix::BaseMatrix;
     using BASE::BASE;
+    using BASE::operator==;
+    using BASE::dense;
 
-    cnine::Tensor<float> evecs;
-    vector<int> eblocks;
+    mutable cnine::Tensor<float> evecs;
+    mutable vector<int> eblocks;
 
+    SubgraphObj(const SubgraphObj& x):
+      BASE(x),
+      evecs(x.evecs),
+      eblocks(x.eblocks){
+    }
 
   public: // ---- Constructors -------------------------------------------------------------------------------
 
 
-    SubgraphObj(const int _n):
-      SubgraphObj(_n,_n){}
+    SubgraphObj(const cnine::Tensor<float>& M, const cnine::Tensor<float>& L):
+      BASE(M){
+      labels=L;
+      labeled=true;
+    }
 
     SubgraphObj(const vector<pair<int,int> >& list): 
       SubgraphObj([](const vector<pair<int,int> >& list){
@@ -62,33 +70,34 @@ namespace ptens{
       }
     }
 
-    SubgraphObj(const int _n, const initializer_list<pair<int,int> >& list, const RtensorA& _labels): 
-      Hgraph(_n,list,_labels){}
+    SubgraphObj(const int _n, const initializer_list<pair<int,int> >& list, const cnine::Tensor<float>& _labels): 
+      BASE(_n,list,_labels){}
 
-    //SubgraphObj(const cnine::RtensorA& A):
-    //SubgraphObj(A){}
+    SubgraphObj(const int n, const cnine::Tensor<float>& M):
+      BASE(n){
+      PTENS_ASSRT(M.ndims()==2);
+      PTENS_ASSRT(M.dim(0)==2);
+      for(int i=0; i<M.dims(1); i++)
+	set(M(0,i),M(1,i),1.0);
+    }
 
+    SubgraphObj(const int n, const cnine::Tensor<float>& _edges, const cnine::Tensor<float>& _labels):
+      SubgraphObj(n,_edges){
+      labels=_labels;
+      labeled=true;
+    }
 
-    SubgraphObj(const int n, const cnine::RtensorA& _edges):
-      SubgraphObj(_edges,n){}
-    //PTENS_ASSRT(_edges.ndims()==2);
-    //PTENS_ASSRT(_edges.get_dim(0)==2);
-    //PTENS_ASSRT(_edges.max()<n);
-    //int nedges=_edges.get_dim(1);
-    //for(int i=0; i<nedges; i++)
-    //set(_edges(0,i),_edges(1,i),1.0);
-    //}
+    SubgraphObj(const int n, const cnine::Tensor<float>& _edges, const cnine::Tensor<float>& _evecs, const cnine::Tensor<float>& evals):
+      SubgraphObj(n,_edges){
+      evecs=_evecs;
+      make_eblocks(evals);
+    }
 
-    SubgraphObj(const int n, const cnine::RtensorA& _edges, const cnine::RtensorA& _labels):
-      Hgraph(_edges,_labels,n){}
-
-    SubgraphObj(const int n, const cnine::RtensorA& _edges, const cnine::RtensorA& _evecs, const cnine::RtensorA& evals):
-      Hgraph(_edges,n), evecs(_evecs){
-      make_eblocks(evals);}
-
-    SubgraphObj(const int n, const cnine::RtensorA& _edges, const cnine::RtensorA& _labels, const cnine::RtensorA& _evecs, const cnine::RtensorA& evals):
-      Hgraph(_edges,_labels,n), evecs(_evecs){
-      make_eblocks(evals);}
+    SubgraphObj(const int n, const cnine::Tensor<float>& _edges, const cnine::Tensor<float>& _labels, const cnine::Tensor<float>& _evecs, const cnine::Tensor<float>& evals):
+      SubgraphObj(n,_edges,_labels){
+      evecs=_evecs;
+      make_eblocks(evals);
+    }
 
 
   public: 
@@ -98,7 +107,12 @@ namespace ptens{
       return eblocks.size()>0;
     }
 
-    void make_eigenbasis(){
+    cnine::Tensor<float> get_evecs() const{
+      make_eigenbasis();
+      return evecs;
+    }
+
+    void make_eigenbasis() const{
       if(eblocks.size()>0) return;
       int n=getn();
 
@@ -120,11 +134,10 @@ namespace ptens{
       const_cast<SubgraphObj&>(*this).make_eblocks(_evals);
     }
 
-    void make_eblocks(const cnine::Tensor<float>& evals){
+    void make_eblocks(const cnine::Tensor<float>& evals) const{
       PTENS_ASSRT(evals.dims.size()==1);
       PTENS_ASSRT(getn()==evals.dims[0]);
       eblocks.clear();
-      int j=0;
       for(int i=0; i<evals.dims[0];){
 	float t=evals(i);
 	int start=i;
@@ -141,6 +154,20 @@ namespace ptens{
       return "SubgraphObj";
     }
 
+    string str(const string indent="") const{
+      ostringstream oss;
+      oss<<indent<<"Subgraph on "<<to_string(getn())<<" vertices:"<<endl;
+      oss<<dense().str(indent+"  ");
+      if(labeled){
+	oss<<indent<<"Labels:"<<endl;
+	oss<<labels.str(indent+"  ");
+      }
+      return oss.str();
+    }
+
+    friend ostream& operator<<(ostream& stream, const SubgraphObj& x){
+      stream<<x.str(); return stream;}
+
   };
 
 }
@@ -151,11 +178,11 @@ namespace std{
   struct hash<ptens::SubgraphObj>{
   public:
     size_t operator()(const ptens::SubgraphObj& x) const{
-      if(x.is_labeled) return (hash<cnine::SparseRmatrix>()(x)<<1)^hash<cnine::RtensorA>()(x.labels);
-      return hash<cnine::SparseRmatrix>()(x);
+      return hash<cnine::sparse_graph<int,float,float> >()(x);
     }
   };
 }
 
 
 #endif 
+

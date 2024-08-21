@@ -21,12 +21,21 @@ from ptens_base import subgraph as _subgraph
 class subgraph:
 
     @classmethod
-    def from_edge_index(self,M,n=-1,labels=None):
+    def make(self,x):
         G=subgraph()
-        if labels is None:
-            G.obj=_subgraph.edge_index(M,n)
+        G.obj=x
+        return G;
+
+    @classmethod
+    def from_edge_index(self,M,n=-1,labels=None,degrees=None):
+        G=subgraph()
+        if degrees is None: 
+            if labels is None:
+                G.obj=_subgraph.edge_index(M,n)
+            else:
+                G.obj=_subgraph.edge_index(M,labels,n)
         else:
-            G.obj=_subgraph.edge_index(M,labels,n)
+            G.obj=_subgraph.edge_index_degrees(M,degrees,n)
         return G
 
     @classmethod
@@ -54,7 +63,6 @@ class subgraph:
     def triangle(self):
         G=subgraph()
         G.obj=_subgraph.triangle()
-        set_evecs()
         return G;
 
     @classmethod
@@ -69,15 +77,26 @@ class subgraph:
         G.obj=_subgraph.star(n)
         return G;
 
+    @classmethod
+    def cached(self):
+        return _subgraph.cached()
+
 
     # ---- Access -----------------------------------------------------------------------------------------------
 
 
+    def has_espaces(self):
+        return self.obj.has_espaces()
+
     def n_espaces(self):
         return self.obj.n_eblocks()
 
+    def evecs(self):
+        self.set_evecs()
+        return self.obj.evecs()
+        
     def set_evecs(self):
-        if self.obj.has_espaces()>0:
+        if self.has_espaces()>0:
             return
         L=self.torch()
         L=torch.diag(torch.sum(L,1))-L
